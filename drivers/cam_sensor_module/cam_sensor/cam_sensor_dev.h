@@ -111,6 +111,7 @@ struct cam_sensor_ctrl_t {
 	bool bob_pwm_switch;
 	uint32_t last_flush_req;
 	uint16_t pipeline_delay;
+	bool slg_pmic_workaround;
 };
 
 #endif /* _CAM_SENSOR_DEV_H_ */
