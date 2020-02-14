@@ -18,6 +18,7 @@
 #include "cam_debug_util.h"
 #include "cam_cdm_util.h"
 #include "cam_cpas_api.h"
+#include "cam_trace.h"
 
 #define CAM_VFE_CAMIF_IRQ_SOF_DEBUG_CNT_MAX 2
 
@@ -295,20 +296,6 @@ static int cam_vfe_camif_ver3_resource_init(
 			CAM_ERR(CAM_ISP,
 				"failed to enable dsp clk, rc = %d", rc);
 	}
-
-	/* All auto clock gating disabled by default */
-	CAM_INFO(CAM_ISP, "overriding clock gating");
-	cam_io_w_mb(0xFFFFFFFF, camif_data->mem_base +
-		camif_data->common_reg->core_cgc_ovd_0);
-
-	cam_io_w_mb(0xFF, camif_data->mem_base +
-		camif_data->common_reg->core_cgc_ovd_1);
-
-	cam_io_w_mb(0x1, camif_data->mem_base +
-		camif_data->common_reg->ahb_cgc_ovd);
-
-	cam_io_w_mb(0x1, camif_data->mem_base +
-		camif_data->common_reg->noc_cgc_ovd);
 
 	return rc;
 }
@@ -1232,6 +1219,27 @@ static int cam_vfe_camif_ver3_handle_irq_top_half(uint32_t evt_id,
 	}
 
 	th_payload->evt_payload_priv = evt_payload;
+
+	if (th_payload->evt_status_arr[CAM_IFE_IRQ_CAMIF_REG_STATUS1]
+			& camif_priv->reg_data->sof_irq_mask) {
+		trace_cam_log_event("SOF", "TOP_HALF",
+		th_payload->evt_status_arr[CAM_IFE_IRQ_CAMIF_REG_STATUS1],
+		camif_node->hw_intf->hw_idx);
+	}
+
+	if (th_payload->evt_status_arr[CAM_IFE_IRQ_CAMIF_REG_STATUS1]
+			& camif_priv->reg_data->epoch0_irq_mask) {
+		trace_cam_log_event("EPOCH0", "TOP_HALF",
+		th_payload->evt_status_arr[CAM_IFE_IRQ_CAMIF_REG_STATUS1],
+		camif_node->hw_intf->hw_idx);
+	}
+
+	if (th_payload->evt_status_arr[CAM_IFE_IRQ_CAMIF_REG_STATUS1]
+			& camif_priv->reg_data->eof_irq_mask) {
+		trace_cam_log_event("EOF", "TOP_HALF",
+		th_payload->evt_status_arr[CAM_IFE_IRQ_CAMIF_REG_STATUS1],
+		camif_node->hw_intf->hw_idx);
+	}
 
 	CAM_DBG(CAM_ISP, "Exit");
 	return rc;

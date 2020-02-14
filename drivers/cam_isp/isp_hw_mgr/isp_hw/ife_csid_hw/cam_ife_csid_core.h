@@ -454,6 +454,7 @@ struct cam_ife_csid_tpg_cfg  {
  * @cnt:              Cid resource reference count.
  * @tpg_set:          Tpg used for this cid resource
  * @is_valid_vc1_dt1: Valid vc1 and dt1
+ * @init_cnt          cid resource init count
  *
  */
 struct cam_ife_csid_cid_data {
@@ -464,6 +465,7 @@ struct cam_ife_csid_cid_data {
 	uint32_t                     cnt;
 	uint32_t                     tpg_set;
 	uint32_t                     is_valid_vc1_dt1;
+	uint32_t                     init_cnt;
 };
 
 
@@ -552,9 +554,9 @@ struct cam_ife_csid_path_cfg {
  *                            need to stop the CSID and mask interrupts.
  * @binning_enable            Flag is set if hardware supports QCFA binning
  * @binning_supported         Flag is set if sensor supports QCFA binning
- *
  * @first_sof_ts              first bootime stamp at the start
  * @prev_qtimer_ts            stores csid timestamp
+ * @epd_supported             Flag is set if sensor supports EPD
  */
 struct cam_ife_csid_hw {
 	struct cam_hw_intf              *hw_intf;
@@ -588,6 +590,7 @@ struct cam_ife_csid_hw {
 	uint32_t                         binning_supported;
 	uint64_t                         prev_boot_timestamp;
 	uint64_t                         prev_qtimer_ts;
+	uint32_t                         epd_supported;
 };
 
 int cam_ife_csid_hw_probe_init(struct cam_hw_intf  *csid_hw_intf,
