@@ -174,6 +174,10 @@ static int32_t cam_flash_driver_cmd(struct cam_flash_ctrl *fctrl,
 		}
 
 		cam_flash_off(fctrl);
+		/*MOT_FLASHLIGHT_GPIO BEGIN*/
+		if (soc_private->is_gpio_flash) {
+			cam_flash_gpio_off(fctrl);
+		} /*MOT_FLASHLIGHT_GPIO END*/
 		fctrl->func_tbl.flush_req(fctrl, FLUSH_ALL, 0);
 		fctrl->last_flush_req = 0;
 		fctrl->flash_state = CAM_FLASH_STATE_ACQUIRE;
@@ -476,6 +480,12 @@ static int32_t cam_flash_platform_probe(struct platform_device *pdev)
 		fctrl->func_tbl.apply_setting = cam_flash_i2c_apply_setting;
 		fctrl->func_tbl.power_ops = cam_flash_i2c_power_ops;
 		fctrl->func_tbl.flush_req = cam_flash_i2c_flush_request;
+	} else if (of_find_property(pdev->dev.of_node, "gpio-flash-support", NULL)) {
+		/* MOT_FLASHLIGHT_GPIO GPIO Flash */
+		fctrl->func_tbl.parser = cam_flash_gpio_pkt_parser;
+		fctrl->func_tbl.apply_setting = cam_flash_gpio_apply_setting;
+		fctrl->func_tbl.power_ops = cam_flash_gpio_power_ops;
+		fctrl->func_tbl.flush_req = cam_flash_gpio_flush_request;
 	} else {
 		if (fctrl->soc_info.gpio_data) {
 			rc = cam_sensor_util_request_gpio_table(
