@@ -208,6 +208,12 @@ int cam_flash_gpio_power_ops(struct cam_flash_ctrl *fctrl,
 				return rc;
 			}
 		}
+		rc = cam_sensor_core_power_up(power_info, soc_info);
+		if (rc) {
+			CAM_ERR(CAM_FLASH, "power up the core is failed:%d",
+				rc);
+			goto free_pwr_settings;
+		}
 		fctrl->is_regulator_enabled = true;
 	} else if ((!regulator_enable) && (fctrl->is_regulator_enabled == true)) {
 		if ((power_info->power_setting == NULL) && (power_info->power_down_setting == NULL)) {
@@ -218,7 +224,12 @@ int cam_flash_gpio_power_ops(struct cam_flash_ctrl *fctrl,
 				return rc;
 			}
 		}
-
+		rc = cam_sensor_util_power_down(power_info, soc_info);
+		if (rc) {
+			CAM_ERR(CAM_FLASH, "power down the core is failed:%d",
+				rc);
+			return rc;
+		}
 		fctrl->is_regulator_enabled = false;
 		goto free_pwr_settings;
 	}
@@ -297,7 +308,7 @@ int cam_flash_gpio_flush_request(struct cam_flash_ctrl *fctrl,
 	}
 
 	if (is_off_needed)
-		cam_flash_off(fctrl);
+		cam_flash_gpio_off(fctrl);
 
 	return rc;
 }
@@ -305,17 +316,15 @@ int cam_flash_gpio_flush_request(struct cam_flash_ctrl *fctrl,
 int cam_flash_gpio_off(struct cam_flash_ctrl *flash_ctrl)
 {
 	int rc = 0;
-	struct cam_sensor_power_ctrl_t *power_info = &flash_ctrl->power_info;
-	struct cam_hw_soc_info *soc_info = &flash_ctrl->soc_info;
 
-	if (!flash_ctrl || !power_info) {
-		CAM_ERR(CAM_FLASH, "Flash control or Power data Null");
+	if (!flash_ctrl) {
+		CAM_ERR(CAM_FLASH, "Flash control Null");
 		return -EINVAL;
 	}
 
-	rc = cam_sensor_util_power_down(power_info, soc_info);
+	rc = flash_ctrl->func_tbl.power_ops(flash_ctrl, false);
 	if (rc) {
-		CAM_ERR(CAM_FLASH, "power down the core is failed:%d", rc);
+		CAM_ERR(CAM_FLASH, "Disable Regulator Failed rc = %d", rc);
 		return rc;
 	}
 
@@ -328,20 +337,18 @@ static int cam_flash_gpio_low(
 	struct cam_flash_frame_setting *flash_data)
 {
 	int rc = 0;
-	struct cam_hw_soc_info *soc_info = &flash_ctrl->soc_info;
-	struct cam_sensor_power_ctrl_t *power_info = &flash_ctrl->power_info;
 
-	if (!flash_data || !power_info) {
-		CAM_ERR(CAM_FLASH, "Flash Data or Power Data Null");
+	if (!flash_ctrl) {
+		CAM_ERR(CAM_FLASH, "Flash control Null");
 		return -EINVAL;
 	}
 
-      rc = cam_sensor_core_power_up(power_info, soc_info);
-      if (rc) {
-          CAM_ERR(CAM_FLASH, "power up the core is failed:%d",
-              rc);
-          return rc;
-      }
+
+	rc = flash_ctrl->func_tbl.power_ops(flash_ctrl, true);
+	if (rc) {
+		CAM_ERR(CAM_FLASH, "Enable Regulator Failed rc = %d", rc);
+		return rc;
+	}
 
 	return rc;
 }
@@ -351,17 +358,16 @@ static int cam_flash_gpio_high(
 	struct cam_flash_frame_setting *flash_data)
 {
 	int rc = 0;
-	struct cam_hw_soc_info *soc_info = &flash_ctrl->soc_info;
-	struct cam_sensor_power_ctrl_t *power_info = &flash_ctrl->power_info;
 
-	if (!flash_data || !power_info) {
-		CAM_ERR(CAM_FLASH, "Flash Data or Power data Null");
+	if (!flash_ctrl) {
+		CAM_ERR(CAM_FLASH, "Flash control Null");
 		return -EINVAL;
 	}
 
-	rc = cam_sensor_core_power_up(power_info, soc_info);
+
+	rc = flash_ctrl->func_tbl.power_ops(flash_ctrl, true);
 	if (rc) {
-		CAM_ERR(CAM_FLASH, "power up the core is failed:%d", rc);
+		CAM_ERR(CAM_FLASH, "Enable Regulator Failed rc = %d", rc);
 		return rc;
 	}
 
@@ -431,7 +437,7 @@ int cam_flash_gpio_apply_setting(struct cam_flash_ctrl *fctrl,
 		if (fctrl->nrt_info.cmn_attr.cmd_type ==
 			CAMERA_SENSOR_FLASH_CMD_TYPE_INIT_FIRE) {
 			flash_data = &fctrl->nrt_info;
-			CAM_ERR(CAM_REQ, "FLASH_INIT_FIRE req_id: %u flash_opcode: %d", req_id, flash_data->opcode);
+			CAM_DBG(CAM_REQ, "FLASH_INIT_FIRE req_id: %u flash_opcode: %d", req_id, flash_data->opcode);
 
 			if (flash_data->opcode == CAMERA_SENSOR_FLASH_OP_FIREHIGH) {
 				if (fctrl->flash_state == CAM_FLASH_STATE_START) {
@@ -462,7 +468,7 @@ int cam_flash_gpio_apply_setting(struct cam_flash_ctrl *fctrl,
 			}
 		} else if (fctrl->nrt_info.cmn_attr.cmd_type == CAMERA_SENSOR_FLASH_CMD_TYPE_WIDGET) {
 			flash_data = &fctrl->nrt_info;
-			CAM_ERR(CAM_REQ, "FLASH_WIDGET req_id: %u flash_opcode: %d", req_id, flash_data->opcode);
+			CAM_DBG(CAM_REQ, "FLASH_WIDGET req_id: %u flash_opcode: %d", req_id, flash_data->opcode);
 
 			if (flash_data->opcode == CAMERA_SENSOR_FLASH_OP_FIRELOW) {
 				rc = cam_flash_gpio_low(fctrl, flash_data);
@@ -511,7 +517,7 @@ int cam_flash_gpio_apply_setting(struct cam_flash_ctrl *fctrl,
 	} else {
 		frame_offset = req_id % MAX_PER_FRAME_ARRAY;
 		flash_data = &fctrl->per_frame[frame_offset];
-		CAM_ERR(CAM_REQ, "FLASH_RT req_id: %u flash_opcode: %d", req_id, flash_data->opcode);
+		CAM_DBG(CAM_REQ, "FLASH_RT req_id: %u flash_opcode: %d", req_id, flash_data->opcode);
 
 		if ((flash_data->opcode == CAMERA_SENSOR_FLASH_OP_FIREHIGH) &&
 			(flash_data->cmn_attr.is_settings_valid) &&
@@ -666,7 +672,7 @@ int cam_flash_gpio_pkt_parser(struct cam_flash_ctrl *fctrl, void *arg)
 			cam_flash_info = (struct cam_flash_init *)cmd_buf;
 
 			/* Loop through cmd formats in one cmd buffer */
-			CAM_ERR(CAM_FLASH, "command Type: %d,Processed: %d,Total: %d",
+			CAM_DBG(CAM_FLASH, "command Type: %d,Processed: %d,Total: %d",
 			cam_flash_info->cmd_type, processed_cmd_buf_in_bytes, total_cmd_buf_in_bytes);
 
 			switch (cam_flash_info->cmd_type) {
@@ -722,7 +728,7 @@ int cam_flash_gpio_pkt_parser(struct cam_flash_ctrl *fctrl, void *arg)
 			}
 			case CAMERA_SENSOR_CMD_TYPE_PWR_UP:
 			case CAMERA_SENSOR_CMD_TYPE_PWR_DOWN:
-				CAM_ERR(CAM_FLASH, "Received power settings");
+				CAM_DBG(CAM_FLASH, "Received power settings");
 				cmd_length_in_bytes = total_cmd_buf_in_bytes;
 				rc = cam_sensor_update_power_settings(cmd_buf, total_cmd_buf_in_bytes, &fctrl->power_info, remain_len);
 				processed_cmd_buf_in_bytes += cmd_length_in_bytes;
@@ -758,12 +764,6 @@ int cam_flash_gpio_pkt_parser(struct cam_flash_ctrl *fctrl, void *arg)
 		rc = msm_camera_fill_vreg_params(&fctrl->soc_info, 	power_info->power_down_setting, power_info->power_down_setting_size);
 		if (rc) {
 			CAM_ERR(CAM_FLASH, "failed to fill vreg params power down rc:%d", rc);
-			return rc;
-		}
-
-		rc = fctrl->func_tbl.power_ops(fctrl, true);
-		if (rc) {
-			CAM_ERR(CAM_FLASH, "Enable Regulator Failed rc = %d", rc);
 			return rc;
 		}
 
