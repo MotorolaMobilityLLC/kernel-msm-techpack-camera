@@ -212,6 +212,7 @@ struct cam_flash_ctrl {
 	uint32_t                            open_cnt;
 };
 /*MOT_FLASHLIGHT_GPIO BEGIN*/
+extern char *saved_command_line; //use androidboot.radio to distinguish different SKU
 int cam_flash_gpio_pkt_parser(struct cam_flash_ctrl *fctrl, void *arg);
 int cam_flash_gpio_apply_setting(struct cam_flash_ctrl *fctrl, uint64_t req_id);
 int cam_flash_gpio_off(struct cam_flash_ctrl *fctrl);
