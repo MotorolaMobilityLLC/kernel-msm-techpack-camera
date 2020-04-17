@@ -210,9 +210,7 @@ int cam_flash_gpio_power_ops(struct cam_flash_ctrl *fctrl,
 		}
 		rc = cam_sensor_core_power_up(power_info, soc_info);
 		if (rc) {
-			CAM_ERR(CAM_FLASH, "power up the core is failed:%d",
-				rc);
-			goto free_pwr_settings;
+			CAM_ERR(CAM_FLASH, "power up the core is failed:%d", rc);
 		}
 		fctrl->is_regulator_enabled = true;
 	} else if ((!regulator_enable) && (fctrl->is_regulator_enabled == true)) {
@@ -226,24 +224,12 @@ int cam_flash_gpio_power_ops(struct cam_flash_ctrl *fctrl,
 		}
 		rc = cam_sensor_util_power_down(power_info, soc_info);
 		if (rc) {
-			CAM_ERR(CAM_FLASH, "power down the core is failed:%d",
-				rc);
+			CAM_ERR(CAM_FLASH, "power down the core is failed:%d", rc);
 			return rc;
 		}
 		fctrl->is_regulator_enabled = false;
-		goto free_pwr_settings;
 	}
     return rc;
-
-	free_pwr_settings:
-		kfree(power_info->power_setting);
-		kfree(power_info->power_down_setting);
-		power_info->power_setting = NULL;
-		power_info->power_down_setting = NULL;
-		power_info->power_setting_size = 0;
-		power_info->power_down_setting_size = 0;
-
-	return rc;
 }
 
 
