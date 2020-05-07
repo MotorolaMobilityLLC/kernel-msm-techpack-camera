@@ -698,6 +698,7 @@ int cam_flash_gpio_pkt_parser(struct cam_flash_ctrl *fctrl, void *arg)
 				fctrl->nrt_info.cmn_attr.request_id = 0;
 				fctrl->nrt_info.opcode = flash_operation_info->opcode;
 				fctrl->nrt_info.cmn_attr.cmd_type = CAMERA_SENSOR_FLASH_CMD_TYPE_INIT_FIRE;
+				fctrl->flash_state = CAM_FLASH_STATE_CONFIG;
 				for (i = 0; i < flash_operation_info->count; i++)
 					fctrl->nrt_info.led_current_ma[i] = flash_operation_info->led_current_ma[i];
 
@@ -709,7 +710,6 @@ int cam_flash_gpio_pkt_parser(struct cam_flash_ctrl *fctrl, void *arg)
 				processed_cmd_buf_in_bytes += 	cmd_length_in_bytes;
 				cmd_buf += cmd_length_in_bytes / sizeof(uint32_t);
 
-				fctrl->flash_state = CAM_FLASH_STATE_CONFIG;
 				break;
 			}
 			case CAMERA_SENSOR_CMD_TYPE_PWR_UP:
@@ -2372,6 +2372,7 @@ int cam_flash_pmic_gpio_pkt_parser(
 				flash_operation_info->opcode;
 			fctrl->nrt_info.cmn_attr.cmd_type =
 				CAMERA_SENSOR_FLASH_CMD_TYPE_INIT_FIRE;
+			fctrl->flash_state = CAM_FLASH_STATE_CONFIG;
 			for (i = 0;
 				i < flash_operation_info->count; i++)
 				fctrl->nrt_info.led_current_ma[i] =
@@ -2382,8 +2383,6 @@ int cam_flash_pmic_gpio_pkt_parser(
 				CAM_ERR(CAM_FLASH,
 					"Apply setting failed: %d",
 					rc);
-
-			fctrl->flash_state = CAM_FLASH_STATE_CONFIG;
 			break;
 		}
 		default:
