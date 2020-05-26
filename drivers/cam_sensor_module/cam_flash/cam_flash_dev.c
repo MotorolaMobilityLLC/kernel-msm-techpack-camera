@@ -518,9 +518,9 @@ static int32_t cam_flash_platform_probe(struct platform_device *pdev)
 		if (cam_flash_find_sku_to_use_pmic()) {
 			/* PMIC Flash */
 			fctrl->func_tbl.parser = cam_flash_pmic_gpio_pkt_parser;
-			fctrl->func_tbl.apply_setting = cam_flash_gpio_apply_setting;
-			fctrl->func_tbl.power_ops = cam_flash_gpio_power_ops;
-			fctrl->func_tbl.flush_req = cam_flash_gpio_flush_request;
+			fctrl->func_tbl.apply_setting = cam_flash_pmic_gpio_apply_setting;
+			fctrl->func_tbl.power_ops = cam_flash_pmic_gpio_power_ops;
+			fctrl->func_tbl.flush_req = cam_flash_pmic_gpio_flush_request;
 		} else {
 			/* MOT_FLASHLIGHT_GPIO GPIO Flash */
 			fctrl->func_tbl.parser = cam_flash_gpio_pkt_parser;
