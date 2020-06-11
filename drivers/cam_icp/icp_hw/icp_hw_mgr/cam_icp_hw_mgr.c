@@ -2512,7 +2512,6 @@ static int cam_icp_mgr_process_fatal_error(
 		CAM_INFO(CAM_ICP, "received HFI_EVENT_SYS_ERROR");
 		if (event_notify->event_data1 == HFI_ERR_SYS_FATAL) {
 			CAM_ERR(CAM_ICP, "received HFI_ERR_SYS_FATAL");
-			BUG();
 		} else if (event_notify->event_data1 ==
 			HFI_ERR_SYS_RESET_FAILURE) {
 			for (i = 0; i < CAM_ICP_CTX_MAX; i++) {
