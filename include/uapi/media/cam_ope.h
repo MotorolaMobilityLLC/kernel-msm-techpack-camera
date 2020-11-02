@@ -120,7 +120,7 @@ struct ope_io_buf_info {
 	uint32_t direction;
 	uint32_t resource_type;
 	uint32_t num_planes;
-	uint32_t reserved;
+	uint32_t pix_pattern;
 	uint32_t num_stripes[OPE_MAX_PLANES];
 	uint32_t mem_handle[OPE_MAX_PLANES];
 	uint32_t plane_offset[OPE_MAX_PLANES];
