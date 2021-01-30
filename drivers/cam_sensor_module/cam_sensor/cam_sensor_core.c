@@ -703,6 +703,44 @@ int cam_sensor_match_id(struct cam_sensor_ctrl_t *s_ctrl)
 	return rc;
 }
 
+static void cam_sensor_dump_regulator_register(struct cam_sensor_ctrl_t *s_ctrl)
+{
+	int index = 0;
+	struct cam_sensor_power_ctrl_t *power_info = NULL;
+	struct cam_hw_soc_info *soc_info = NULL;
+	struct cam_sensor_power_setting *power_setting = NULL;
+
+	if (!s_ctrl) {
+		CAM_ERR(CAM_SENSOR, "failed: %pK", s_ctrl);
+		return;
+	}
+
+	power_info = &s_ctrl->sensordata->power_info;
+	soc_info = &s_ctrl->soc_info;
+
+	if (!power_info || !soc_info) {
+		CAM_ERR(CAM_SENSOR, "failed: %pK %pK", power_info, soc_info);
+		return;
+	}
+
+	for (index = 0; index < power_info->power_setting_size; index++) {
+		power_setting = &power_info->power_setting[index];
+		if (!power_setting) {
+			CAM_ERR(CAM_SENSOR, "Invalid power up settings for index %d", index);
+			continue;
+		}
+
+		if (SENSOR_VIO == power_setting->seq_type ||
+			SENSOR_VANA == power_setting->seq_type ||
+			SENSOR_VDIG == power_setting->seq_type) {
+			if (!IS_ERR_OR_NULL(soc_info->rgltr[power_setting->seq_type])) {
+				CAM_ERR(CAM_SENSOR, "Get regulator register status, type = %d", power_setting->seq_type);
+				regulator_get_current_limit(soc_info->rgltr[power_setting->seq_type]);
+			}
+		}
+	}
+}
+
 int32_t cam_sensor_driver_cmd(struct cam_sensor_ctrl_t *s_ctrl,
 	void *arg)
 {
@@ -780,6 +818,8 @@ int32_t cam_sensor_driver_cmd(struct cam_sensor_ctrl_t *s_ctrl,
 		/* Match sensor ID */
 		rc = cam_sensor_match_id(s_ctrl);
 		if (rc < 0) {
+			/* If probe sensor fail, dump regulator register */
+			cam_sensor_dump_regulator_register(s_ctrl);
 			cam_sensor_power_down(s_ctrl);
 			msleep(20);
 			goto free_power_settings;
