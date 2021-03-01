@@ -2087,10 +2087,15 @@ static int cam_tfe_camif_resource_start(
 
 	/* Epoch config */
 	epoch0_irq_mask = (((rsrc_data->last_line + rsrc_data->vbi_value) -
-			rsrc_data->first_line) / 2);
+			rsrc_data->first_line) / 5);
 	if (epoch0_irq_mask > (rsrc_data->last_line - rsrc_data->first_line))
 		epoch0_irq_mask = (rsrc_data->last_line -
 					rsrc_data->first_line);
+
+	CAM_DBG(CAM_ISP,
+		"TFE:%d first_line: %u last_line: %u vbi: %u epoch0_irq_mask: 0x%x",
+		core_info->core_index, rsrc_data->first_line,
+		rsrc_data->last_line, rsrc_data->vbi_value, epoch0_irq_mask);
 
 	epoch1_irq_mask = rsrc_data->reg_data->epoch_line_cfg &
 			0xFFFF;
