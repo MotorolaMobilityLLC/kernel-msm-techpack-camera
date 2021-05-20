@@ -127,7 +127,13 @@ struct cam_ois_opcode {
  * @i2c_freq_mode         :    i2c frequency mode
  * @cmd_type              :    Explains type of command
  * @ois_fw_flag           :    indicates if fw is present or not
+ * @ois_preprog_flag      :    indicates if preprog is present or not
+ * @ois_precoeff_flag     :    indicates if precoeff is present or not
  * @is_ois_calib          :    indicates the calibration data is available
+ * @ois_postcalib_flag    :    indicates if postcalib is present or not
+ * @ois_fw_txn_data_sz    :    num data bytes per i2c txn when sending fw
+ * @ois_fw_inc_addr       :    should address increment when sending fw
+ * @ois_fw_addr_type      :    address type of fw i2c txn
  * @ois_name              :    OIS name
  * @opcode                :    opcode
  */
@@ -136,7 +142,14 @@ struct cam_cmd_ois_info {
 	__u8                  i2c_freq_mode;
 	__u8                  cmd_type;
 	__u8                  ois_fw_flag;
+	__u8                  ois_preprog_flag;
+	__u8                  ois_precoeff_flag;
 	__u8                  is_ois_calib;
+	__u8                  ois_postcalib_flag;
+	__u8                  ois_fw_txn_data_sz;
+	__u8                  ois_fw_inc_addr;
+	__u8                  ois_fw_addr_type;
+	__u8                  ois_fw_data_type;
 	char                  ois_name[MAX_OIS_NAME_SIZE];
 	struct cam_ois_opcode opcode;
 } __attribute__((packed));
