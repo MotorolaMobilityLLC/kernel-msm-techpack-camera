@@ -301,6 +301,15 @@ int cam_flash_get_dt_data(struct cam_flash_ctrl *fctrl,
 		goto free_soc_private;
 	}
 
+	if (of_find_property(of_node, "cci-master", NULL)) {
+		rc = cam_sensor_util_regulator_powerup(soc_info);
+		if (rc < 0)
+		{
+			CAM_ERR(CAM_FLASH, "get regulator_powerup fail  %d", rc);
+			return rc;
+		}
+	}
+
 	rc = cam_get_source_node_info(of_node, fctrl, soc_info->soc_private);
 	if (rc) {
 		CAM_ERR(CAM_FLASH,
