@@ -112,6 +112,9 @@ static const struct camera_submodule_component camera_sensor[] = {
 	IS_REACHABLE(CONFIG_LEDS_QTI_FLASH)
 	{&cam_flash_init_module, &cam_flash_exit_module},
 #endif
+#ifdef CONFIG_AF_NOISE_ELIMINATION
+	{&mot_actuator_driver_init, &mot_actuator_driver_exit},
+#endif
 #endif
 };
 

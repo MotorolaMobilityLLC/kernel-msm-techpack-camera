@@ -172,6 +172,10 @@ camera-$(CONFIG_SPECTRA_SENSOR) += \
 	cam_sensor_module/cam_sensor_utils/cam_sensor_util.o \
 	cam_sensor_module/cam_res_mgr/cam_res_mgr.o
 
+camera-$(CONFIG_AF_NOISE_ELIMINATION) += \
+	cam_sensor_module/cam_actuator/mot_actuator.o \
+	cam_sensor_module/cam_actuator/mot_actuator_policy.o
+
 camera-$(CONFIG_LEDS_QPNP_FLASH_V2) += \
 	cam_sensor_module/cam_flash/cam_flash_dev.o \
 	cam_sensor_module/cam_flash/cam_flash_core.o \
