@@ -125,7 +125,8 @@ static const mot_dev_info mot_dev_list[MOT_DEVICE_NUM] = {
 	},
 };
 
-#ifdef CONFIG_CYPFG_DTB
+//TODO: delete it
+#if defined(CONFIG_CYPFG_DTB) || defined(CONFIG_CYPFQ_DTB)
 static uint32_t mot_device_index = MOT_DEVICE_CYPFG;
 #endif
 
