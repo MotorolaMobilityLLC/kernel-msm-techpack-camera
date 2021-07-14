@@ -31,6 +31,7 @@
 /*=================ACTUATOR HW INFO====================*/
 #define DEVICE_NAME_LEN 32
 #define REGULATOR_NAME_MAX_LEN 32
+#define LENS_MAX_STAGES 10
 
 typedef enum {
 	MOT_ACTUATOR_DW9800V,
@@ -51,7 +52,7 @@ typedef enum {
 typedef struct {
 	uint16_t kneePoint;
 	uint16_t step;
-} mot_park_lens_step;
+} mot_lens_step;
 
 typedef struct {
 	struct cam_sensor_i2c_reg_setting *init_setting;
@@ -59,14 +60,26 @@ typedef struct {
 } mot_actuator_settings;
 
 typedef struct {
+	bool park_lens_needed;
+	mot_lens_step park_lens_step[LENS_MAX_STAGES];
+} mot_park_lens;
+
+typedef struct {
+	bool launch_lens_needed;
+	mot_lens_step launch_lens_step[LENS_MAX_STAGES];
+} mot_launch_lens;
+
+typedef struct {
 	mot_actuator_type actuator_type;
 	uint16_t dac_pos;
+	uint16_t init_pos;
 	uint16_t cci_addr;
 	uint16_t cci_dev;
 	uint16_t cci_master;
 	char *regulator_list[REGULATOR_NUM];
 	uint32_t regulator_volt_uv[REGULATOR_NUM];
-	bool park_lens_needed;
+	mot_park_lens park_lens;
+	mot_launch_lens launch_lens;
 } mot_actuator_hw_info;
 
 typedef struct {
@@ -106,7 +119,7 @@ static mot_actuator_settings mot_actuator_list[MOT_ACTUATOR_NUM] = {
 	{&mot_dw9800v_init_settings, &mot_dw9800v_dac_settings},
 };
 
-static const mot_dev_info mot_dev_list[MOT_DEVICE_NUM] = {
+static mot_dev_info mot_dev_list[MOT_DEVICE_NUM] = {
 	{
 		.dev_type = MOT_DEVICE_CYPFG,
 		.dev_name = "cypfg",
@@ -114,12 +127,20 @@ static const mot_dev_info mot_dev_list[MOT_DEVICE_NUM] = {
 			[0] = {
 				.actuator_type = MOT_ACTUATOR_DW9800V,
 				.dac_pos = 0,
+				.init_pos = 512,
 				.cci_addr = 0x0c,
 				.cci_dev = 0x00,
 				.cci_master = 0x0,
 				.regulator_list = {"ldo7", "ldo5"},
 				.regulator_volt_uv = {1800000, 2800000},
-				.park_lens_needed = false,
+				.launch_lens = {
+						.launch_lens_needed = true,
+						.launch_lens_step = {
+									{200, 100},
+									{100, 60},
+									{50, 30},
+						},
+				},
 			},
 		},
 	},
@@ -132,7 +153,6 @@ static uint32_t mot_device_index = MOT_DEVICE_CYPFG;
 
 /*=================ACTUATOR RUNTIME====================*/
 #define VIBRATING_MAX_INTERVAL 2000//ms
-#define PARK_LENS_MAX_STAGES 10
 
 struct mot_actuator_ctrl_t {
 	struct cam_subdev v4l2_dev_str;
@@ -163,7 +183,7 @@ static enum mot_actuator_state_e mot_actuator_state = MOT_ACTUATOR_IDLE;
 static mot_actuator_runtime_type mot_actuator_runtime[MOT_ACTUATOR_NUM];
 static uint32_t lens_safe_pos_dac = 0;
 static uint32_t lens_park_pos = 512;
-static mot_park_lens_step lens_park_table[PARK_LENS_MAX_STAGES] = {};
+static mot_lens_step lens_park_table[LENS_MAX_STAGES] = {};
 static bool runtime_inited = 0;
 
 static int mot_actuator_init_runtime(void)
@@ -264,7 +284,9 @@ static int32_t mot_actuator_power_on(uint32_t index)
 	for (i = 0; i < REGULATOR_NUM; i++) {
 		if (mot_actuator_runtime[index].regulators[i] != NULL) {
 			ret = regulator_enable(mot_actuator_runtime[index].regulators[i]);
-			CAM_DBG(CAM_ACTUATOR, "power on ret %d", ret);
+			if(ret){
+				CAM_ERR(CAM_ACTUATOR, "power on regulators[%d] failed, ret:%d", i,ret);
+			}
 		}
 	}
 
@@ -288,12 +310,20 @@ static int32_t mot_actuator_power_off(uint32_t index)
 
 int32_t mot_actuator_init_cci(uint32_t index)
 {
-	int32_t ret = 0;
+	int32_t ret = 0,rc = 0;
 
 	CAM_DBG(CAM_ACTUATOR, "init cci.");
 	ret = camera_io_init(&mot_actuator_runtime[index].io_master);
 	if (ret != 0) {
-		CAM_ERR(CAM_ACTUATOR, "init cci failed, ret=%d!!!", ret);
+		rc = camera_io_release(&mot_actuator_runtime[index].io_master);
+		CAM_ERR(CAM_ACTUATOR, "init cci failed!!! ret=%d,release rc=%d. try again!", ret, rc);
+		/*delay 100ms and try again*/
+		usleep_range(100000, 100100);
+		ret = camera_io_init(&mot_actuator_runtime[index].io_master);
+		if (ret != 0) {
+			rc = camera_io_release(&mot_actuator_runtime[index].io_master);
+			CAM_ERR(CAM_ACTUATOR, "try again init cci failed!!! ret=%d, release rc=%d", ret, rc);
+		}
 	}
 	return ret;
 }
@@ -310,6 +340,106 @@ int32_t mot_actuator_release_cci(uint32_t index)
 	return ret;
 }
 
+static int32_t mot_actuator_launch_lens(uint32_t index, uint32_t dac_value)
+{
+	uint32_t cur_len_pos = mot_dev_list[mot_device_index].actuator_info[0].init_pos;
+	uint32_t last_len_pos = 0;
+	int stageIndex = 0;
+	unsigned int consumers = 0;
+	int32_t ret = 0;
+	uint32_t lens_launch_pos = dac_value;
+	mot_lens_step *lens_launch_table = mot_dev_list[mot_device_index].actuator_info[index].launch_lens.launch_lens_step;
+
+	if (mot_dev_list[mot_device_index].actuator_info[index].launch_lens.launch_lens_needed == false) {
+		CAM_DBG(CAM_ACTUATOR, "Launch lens is not needed.");
+		return 0;
+	}
+
+	// from 0 to safe_dac_pos
+	while (cur_len_pos < lens_launch_pos) {
+		consumers = mot_actuator_get_consumers();
+		if ((consumers & (~CLINET_VIBRATOR_MASK)) != 0) {
+			CAM_WARN(CAM_ACTUATOR, "Launch lens was broken by other actuator requests.");
+			break;
+		}
+
+		for (stageIndex = 0; stageIndex < LENS_MAX_STAGES; stageIndex++) {
+			if (cur_len_pos < lens_launch_table[stageIndex].kneePoint && lens_launch_table[stageIndex].step > 0) {
+				cur_len_pos += lens_launch_table[stageIndex].step;
+				break;
+			}
+		}
+
+		if (stageIndex == LENS_MAX_STAGES && cur_len_pos < lens_launch_pos) {
+			cur_len_pos += 10;
+		}
+
+		if(last_len_pos == cur_len_pos)
+		        /*break the cycle when cur_len_pos didn't update*/
+		        break;
+		else
+		        last_len_pos = cur_len_pos;
+
+		ret = mot_actuator_move_lens_by_dac(index, cur_len_pos);
+
+		if (ret < 0 ) {
+			CAM_ERR(CAM_ACTUATOR, "Launch Lens encounter CCI error, break now.");
+			break;
+		}
+
+		if (cur_len_pos >= lens_launch_pos) {
+			/*For skipping the last delay*/
+			CAM_WARN(CAM_ACTUATOR, "Launch lens done.");
+			break;
+		}
+
+		usleep_range(10000, 12000);
+	}
+
+	// from 512 to 0
+	while (cur_len_pos > lens_launch_pos) {
+		consumers = mot_actuator_get_consumers();
+		if ((consumers & (~CLINET_VIBRATOR_MASK)) != 0) {
+			CAM_WARN(CAM_ACTUATOR, "Launch lens was broken by other actuator requests.");
+			break;
+		}
+
+		for (stageIndex = 0; stageIndex < LENS_MAX_STAGES; stageIndex++) {
+			if (lens_launch_table[stageIndex].kneePoint == 0 && lens_launch_table[stageIndex].step == 0) {
+				break;
+			}
+
+			if (cur_len_pos >= lens_launch_table[stageIndex].kneePoint && lens_launch_table[stageIndex].step > 0) {
+				cur_len_pos -= lens_launch_table[stageIndex].step;
+				break;
+			}
+		}
+
+		if (lens_launch_table[stageIndex].step == 0 && cur_len_pos > lens_launch_pos) {
+			cur_len_pos -= 10;
+			if (cur_len_pos < 10)
+				cur_len_pos = 0;
+		}
+
+		ret = mot_actuator_move_lens_by_dac(index, cur_len_pos);
+
+		if (ret < 0 ) {
+			CAM_ERR(CAM_ACTUATOR, "Launch Lens encounter CCI error, break now.");
+			break;
+		}
+
+		if (cur_len_pos <= lens_launch_pos) {
+			/*For skipping the last delay*/
+			CAM_DBG(CAM_ACTUATOR, "Launch lens done.");
+			break;
+		}
+
+		usleep_range(10000, 12000);
+	}
+
+	return ret;
+}
+
 static int32_t mot_actuator_vib_move_lens(uint32_t index)
 {
 	int32_t ret = 0;
@@ -321,7 +451,7 @@ static int32_t mot_actuator_vib_move_lens(uint32_t index)
 	}
 
 	consumers = mot_actuator_get_consumers();
-
+	CAM_WARN(CAM_ACTUATOR, "consumers=%d",consumers);
 	if (consumers & CLINET_CAMERA_MASK) {
 		/*Don't init actuator when camera on*/
 		CAM_WARN(CAM_ACTUATOR, "Camera is holding actuator,don't init actuator for vibrator,consumers=%d",consumers);
@@ -332,11 +462,11 @@ static int32_t mot_actuator_vib_move_lens(uint32_t index)
 		if (ret == 0) {
 			ret = mot_actuator_apply_settings(&mot_actuator_runtime[index].io_master, mot_actuator_get_init_settings(index));
 			if (ret == 0) {
-				CAM_WARN(CAM_ACTUATOR, "init acutator sucess", ret);
+				CAM_DBG(CAM_ACTUATOR, "init actuator sucess", ret);
 				mot_actuator_state = MOT_ACTUATOR_INITED;
 			} else {
 				mot_actuator_release_cci(index);
-				CAM_ERR(CAM_ACTUATOR, "init acutator failed, ret=%d!!!", ret);
+				CAM_ERR(CAM_ACTUATOR, "init actuator failed, ret=%d!!!", ret);
 			}
 		} else {
 			CAM_ERR(CAM_ACTUATOR, "init cci device failed, ret=%d!!!", ret);
@@ -351,7 +481,7 @@ static int32_t mot_actuator_vib_move_lens(uint32_t index)
 	if (ret == 0 && mot_actuator_state == MOT_ACTUATOR_INITED) {
 		/*Move lens to the specified position.*/
 
-		CAM_DBG(CAM_ACTUATOR, "actuator consumers: %d", consumers);
+		CAM_WARN(CAM_ACTUATOR, "actuator consumers: %d", consumers);
 
 		if ((consumers & CLINET_VIBRATOR_MASK) == 0) {
 			mot_actuator_get(ACTUATOR_CLIENT_VIBRATOR);
@@ -359,19 +489,28 @@ static int32_t mot_actuator_vib_move_lens(uint32_t index)
 
 		if (consumers == 0) {
 			/*Just move lens when camera off and before first vibrating*/
-			ret = mot_actuator_move_lens_by_dac(index, mot_actuator_runtime[index].safe_dac_pos);
+			/*use launch_lens to move lens step-by-step,reduce TICK noise*/
+			if (mot_dev_list[mot_device_index].actuator_info[index].launch_lens.launch_lens_needed == true) {
+				ret = mot_actuator_launch_lens(index, mot_actuator_runtime[index].safe_dac_pos);
+			} else {
+				ret = mot_actuator_move_lens_by_dac(index, mot_actuator_runtime[index].safe_dac_pos);
+				/*delay 10~12ms to wait lens move to specify location*/
+				usleep_range(10000, 12000);
+			}
+
 			if (ret == 0) {
-				CAM_DBG(CAM_ACTUATOR, "actuator is safe now, please start vibrating");
+				CAM_DBG(CAM_ACTUATOR, "actuator is safe now, safe_dac_pos:%d, please start vibrating.",
+							mot_actuator_runtime[index].safe_dac_pos);
 			} else {
 				CAM_ERR(CAM_ACTUATOR, "write dac failed, ret=%d!!!", ret);
 			}
 		} else {
-			CAM_DBG(CAM_ACTUATOR, "actuator is already in position.");
+			CAM_WARN(CAM_ACTUATOR, "actuator is already in position.");
 		}
 
 		mot_actuator_state = MOT_ACTUATOR_STARTED;
 	} else {
-		CAM_DBG(CAM_ACTUATOR, "May be already in position. state: %d ret=%d.", mot_actuator_state, ret);
+		CAM_WARN(CAM_ACTUATOR, "May be already in position. state: %d ret=%d.", mot_actuator_state, ret);
 	}
 
 	return ret;
@@ -384,7 +523,7 @@ static int32_t mot_actuator_park_lens(uint32_t index)
 	unsigned int consumers = 0;
 	int32_t ret = 0;
 
-	if (mot_dev_list[mot_device_index].actuator_info[index].park_lens_needed == false) {
+	if (mot_dev_list[mot_device_index].actuator_info[index].park_lens.park_lens_needed == false) {
 		CAM_DBG(CAM_ACTUATOR, "Park lens is not needed.");
 		return 0;
 	}
@@ -396,7 +535,7 @@ static int32_t mot_actuator_park_lens(uint32_t index)
 			break;
 		}
 
-		for (stageIndex=0; stageIndex<PARK_LENS_MAX_STAGES; stageIndex++) {
+		for (stageIndex=0; stageIndex<LENS_MAX_STAGES; stageIndex++) {
 			if (cur_len_pos >= lens_park_table[stageIndex].kneePoint && lens_park_table[stageIndex].step > 0) {
 				cur_len_pos -= lens_park_table[stageIndex].step;
 				break;
@@ -416,7 +555,7 @@ static int32_t mot_actuator_park_lens(uint32_t index)
 
 		if (cur_len_pos <= lens_park_pos) {
 			/*For skipping the last delay*/
-			CAM_DBG(CAM_ACTUATOR, "Park lens done.");
+			CAM_WARN(CAM_ACTUATOR, "Park lens done.");
 			break;
 		}
 
@@ -428,17 +567,31 @@ static int32_t mot_actuator_park_lens(uint32_t index)
 
 int mot_actuator_on_vibrate_start(void)
 {
+	bool is_exiting = false;
 	ktime_t start,end,duration;
+
 	start = ktime_get();
+
 	__pm_stay_awake(&mot_actuator_fctrl.actuator_wakelock);
 	cancel_delayed_work(&mot_actuator_fctrl.delay_work);
+
+	if (mutex_is_locked(&mot_actuator_fctrl.actuator_lock)) {
+		is_exiting = true;
+	}
+
 	mutex_lock(&mot_actuator_fctrl.actuator_lock);
+	if (is_exiting) {
+		CAM_WARN(CAM_ACTUATOR, "Wait 20~30us to let CCI release done.");
+		usleep_range(20, 30);
+	}
+
 	mot_actuator_vib_move_lens(MOT_ACTUATOR_DW9800V);
 	mutex_unlock(&mot_actuator_fctrl.actuator_lock);
+
 	end = ktime_get();
 	duration = ktime_sub(end, start);
 	duration /= 1000;
-	CAM_DBG(CAM_ACTUATOR, "Move lens delay: %dus", duration);
+	CAM_WARN(CAM_ACTUATOR, "Move lens delay: %dus", duration);
 	return 0;
 }
 EXPORT_SYMBOL(mot_actuator_on_vibrate_start);
@@ -747,10 +900,11 @@ static ssize_t mot_actuator_dump_store(struct device *dev,
 static inline ssize_t mot_actuator_park_lens_table_show(struct device *dev,
 		struct device_attribute *attr, char *buf)
 {
+	mot_lens_step *lens_park_table = mot_dev_list[mot_device_index].actuator_info[0].park_lens.park_lens_step;
 	ssize_t count = 0;
 	int i;
 	count += sprintf(buf, "\n  knee point  step\n");
-	for (i=0; i<PARK_LENS_MAX_STAGES; i++) {
+	for (i=0; i<LENS_MAX_STAGES; i++) {
 		if (lens_park_table[i].kneePoint != 0 || lens_park_table[i].step != 0) {
 			count += sprintf(buf, "\n  %d        %d\n", lens_park_table[i].kneePoint, lens_park_table[i].step);
 		}
@@ -764,18 +918,19 @@ static ssize_t mot_actuator_park_lens_table_store(struct device *dev,
 	uint32_t kneePoint = 0;
 	uint32_t step = 0;
 	int index = 0;
+	mot_lens_step *lens_park_table = mot_dev_list[mot_device_index].actuator_info[0].park_lens.park_lens_step;
 
 	sscanf(buf, "%d %d", &kneePoint, &step);
 	if (kneePoint == 0 && step == 0) {
-		memset(lens_park_table, 0x0, sizeof(lens_park_table));
+		memset(lens_park_table, 0x0, sizeof(*lens_park_table));
 		return count;
 	}
 
 	if (step > 0) {
-		for (index=0; index<PARK_LENS_MAX_STAGES; index++) {
+		for (index=0; index<LENS_MAX_STAGES; index++) {
 			if (lens_park_table[index].kneePoint < kneePoint) {
 				memcpy(&lens_park_table[index+1], &lens_park_table[index],
-					(PARK_LENS_MAX_STAGES-index-1)*sizeof(lens_park_table[0]));
+					(LENS_MAX_STAGES-index-1)*sizeof(lens_park_table[0]));
 				lens_park_table[index].kneePoint = kneePoint;
 				lens_park_table[index].step = step;
 				break;
@@ -783,7 +938,7 @@ static ssize_t mot_actuator_park_lens_table_store(struct device *dev,
 		}
 	}
 
-	for (index=0; index<PARK_LENS_MAX_STAGES; index++) {
+	for (index=0; index<LENS_MAX_STAGES; index++) {
 		CAM_DBG(CAM_ACTUATOR, "Park Lens Table[%d] %d, %d", index,
 			lens_park_table[index].kneePoint, lens_park_table[index].step);
 	}
