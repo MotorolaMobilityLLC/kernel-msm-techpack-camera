@@ -146,10 +146,72 @@ static mot_dev_info mot_dev_list[MOT_DEVICE_NUM] = {
 	},
 };
 
-//TODO: delete it
-#if defined(CONFIG_CYPFG_DTB) || defined(CONFIG_CYPFQ_DTB)
-static uint32_t mot_device_index = MOT_DEVICE_CYPFG;
-#endif
+static uint32_t mot_device_index = MOT_DEVICE_NUM;
+static char *bootargs_str = NULL;
+
+static int mot_actuator_get_bootarg(char *key, char **value)
+{
+	const char *bootargs_tmp = NULL;
+	char *idx = NULL;
+	char *kvpair = NULL;
+	int err = 1;
+	struct device_node *n = of_find_node_by_path("/chosen");
+	size_t bootargs_tmp_len = 0;
+
+	if (n == NULL)
+		goto err;
+
+	if (of_property_read_string(n, "bootargs", &bootargs_tmp) != 0)
+		goto putnode;
+
+	bootargs_tmp_len = strlen(bootargs_tmp);
+	if (!bootargs_str) {
+		/* The following operations need a non-const
+		 * version of bootargs
+		 */
+		bootargs_str = kzalloc(bootargs_tmp_len + 1, GFP_KERNEL);
+		if (!bootargs_str)
+			goto putnode;
+	}
+	strlcpy(bootargs_str, bootargs_tmp, bootargs_tmp_len + 1);
+
+	idx = strnstr(bootargs_str, key, strlen(bootargs_str));
+	if (idx) {
+		kvpair = strsep(&idx, " ");
+		if (kvpair)
+			if (strsep(&kvpair, "=")) {
+				*value = strsep(&kvpair, " ");
+				if (*value)
+					err = 0;
+			}
+	}
+
+putnode:
+	of_node_put(n);
+err:
+	return err;
+}
+
+static int cam_select_actuator_by_device_name(void)
+{
+	char *str = NULL;
+	uint32_t i;
+	if (mot_actuator_get_bootarg("androidboot.device=", &str) == 0)
+		CAM_WARN(CAM_ACTUATOR, "device name = %s", str);
+
+	for (i = 0; i < MOT_DEVICE_NUM; i++) {
+		if (str!= NULL && !strcmp(str, mot_dev_list[i].dev_name)) {
+			mot_device_index = i;
+			CAM_WARN(CAM_ACTUATOR, "Found device:%s, index:%d", str, mot_device_index);
+			break;
+		}
+	}
+
+	if (i >= MOT_DEVICE_NUM) {
+		CAM_ERR(CAM_ACTUATOR, "UNKNOWN DEVICE:%s", str);
+	}
+	return 1;
+}
 
 /*=================ACTUATOR RUNTIME====================*/
 #define VIBRATING_MAX_INTERVAL 2000//ms
@@ -1016,6 +1078,7 @@ static int mot_actuator_component_bind(struct device *dev,
 	(void)data;
 
 	mot_actuator_init_subdev(dev, &mot_actuator_fctrl);
+	cam_select_actuator_by_device_name();
 
 	CAM_WARN(CAM_ACTUATOR,"exit");
 
