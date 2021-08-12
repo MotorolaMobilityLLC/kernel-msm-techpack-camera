@@ -46,6 +46,8 @@ typedef enum {
 
 typedef enum {
 	MOT_DEVICE_CYPFG,
+	MOT_DEVICE_CYPFQ,
+	MOT_DEVICE_CYPFR,
 	MOT_DEVICE_NUM,
 } mot_dev_type;
 
@@ -119,7 +121,7 @@ static mot_actuator_settings mot_actuator_list[MOT_ACTUATOR_NUM] = {
 	{&mot_dw9800v_init_settings, &mot_dw9800v_dac_settings},
 };
 
-static mot_dev_info mot_dev_list[MOT_DEVICE_NUM] = {
+static mot_dev_info mot_dev_list[MOT_DEVICE_NUM+1] = {
 	{
 		.dev_type = MOT_DEVICE_CYPFG,
 		.dev_name = "cypfg",
@@ -144,6 +146,56 @@ static mot_dev_info mot_dev_list[MOT_DEVICE_NUM] = {
 			},
 		},
 	},
+
+	{
+		.dev_type = MOT_DEVICE_CYPFQ,
+		.dev_name = "cypfq",
+		.actuator_info = {
+			[0] = {
+				.actuator_type = MOT_ACTUATOR_DW9800V,
+				.dac_pos = 0,
+				.init_pos = 512,
+				.cci_addr = 0x0c,
+				.cci_dev = 0x00,
+				.cci_master = 0x0,
+				.regulator_list = {"ldo7", "ldo5"},
+				.regulator_volt_uv = {1800000, 2800000},
+				.launch_lens = {
+						.launch_lens_needed = true,
+						.launch_lens_step = {
+									{200, 100},
+									{100, 60},
+									{50, 30},
+						},
+				},
+			},
+		},
+	},
+
+	{
+		.dev_type = MOT_DEVICE_CYPFR,
+		.dev_name = "cypfr",
+		.actuator_info = {
+			[0] = {
+				.actuator_type = MOT_ACTUATOR_DW9800V,
+				.dac_pos = 0,
+				.init_pos = 512,
+				.cci_addr = 0x0c,
+				.cci_dev = 0x00,
+				.cci_master = 0x0,
+				.regulator_list = {"ldo7", "ldo5"},
+				.regulator_volt_uv = {1800000, 2800000},
+				.launch_lens = {
+						.launch_lens_needed = true,
+						.launch_lens_step = {
+									{200, 100},
+									{100, 60},
+									{50, 30},
+						},
+				},
+			},
+		},
+	}
 };
 
 static uint32_t mot_device_index = MOT_DEVICE_NUM;
