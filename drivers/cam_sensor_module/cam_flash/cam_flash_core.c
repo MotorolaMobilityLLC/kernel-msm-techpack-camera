@@ -15,6 +15,7 @@
 static uint default_on_timer = 2;
 module_param(default_on_timer, uint, 0644);
 
+static int flash_initstate = 0;
 static struct i2c_settings_list*  i2c_flash_off = NULL;
 static struct i2c_settings_list*
 	cam_flash_get_i2c_ptr(struct i2c_settings_list *pi2c_list)
@@ -768,6 +769,9 @@ int cam_flash_i2c_apply_setting(struct cam_flash_ctrl *fctrl,
 	CAM_DBG(CAM_FLASH, "req_id=%llu", req_id);
 	if (req_id == 0) {
 		/* NonRealTime Init settings*/
+		if(flash_initstate)
+			goto config_setting;
+
 		if (fctrl->apply_streamoff == true) {
 			fctrl->apply_streamoff = false;
 			i2c_set = &fctrl->i2c_data.streamoff_settings;
@@ -810,7 +814,9 @@ int cam_flash_i2c_apply_setting(struct cam_flash_ctrl *fctrl,
 					i2c_flash_off = cam_flash_get_i2c_ptr(i2c_list);
 				}
 			}
+			flash_initstate = CAM_FLASH_STATE_CONFIG;
 		}
+config_setting:
 		/* NonRealTime (Widget/RER/INIT_FIRE settings) */
 		if (fctrl->i2c_data.config_settings.is_settings_valid == true) {
 			list_for_each_entry(i2c_list,
@@ -1988,6 +1994,7 @@ int cam_flash_release_dev(struct cam_flash_ctrl *fctrl)
 
 		kfree(i2c_flash_off);
 		i2c_flash_off = NULL;
+		flash_initstate = 0;
 	}
 
 	if (fctrl->bridge_intf.device_hdl != 1) {
